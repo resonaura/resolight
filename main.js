@@ -136,6 +136,7 @@ const uploadProject = async () => {
     console.log('✅ Upload completed successfully.');
   } catch (error) {
     console.error(`❌ Upload error: ${error}`);
+    throw error;
   }
 };
 
