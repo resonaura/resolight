@@ -1,198 +1,208 @@
 #include <Arduino.h>
-#include <homekit/types.h>
-#include <homekit/homekit.h>
 #include <homekit/characteristics.h>
-#include <stdio.h>
+#include <homekit/homekit.h>
+#include <homekit/types.h>
 #include <port.h>
+#include <stdio.h>
 
+// Accessory info
+#define ACCESSORY_NAME ("Ceiling Light")
+#define ACCESSORY_SN ("RE:2107") // SERIAL_NUMBER
+#define ACCESSORY_MANUFACTURER ("Resonaura")
+#define ACCESSORY_MODEL ("ResoLight")
+
+// Other constances
+#define LED 2
+
+// Yeelight API
 extern void setYeelightPower(bool on, bool colorBulb);
 extern void setYeelightBrightness(int brightness, bool colorBulb);
 extern void setYeelightColorTemp(int temp, bool colorBulb);
 extern void setYeelightHueAndSaturation(int hue, int saturation);
 
-//const char * buildTime = __DATE__ " " __TIME__ " GMT";
+// State variables
+int brightness = 100; //[0, 100]
+unsigned int temperature = 154;
+float hue = 0;
+float saturation = 0;
+bool on = false; // true or flase
+bool inColorMode = false;
 
-#define ACCESSORY_NAME  ("Ceiling Light")
-#define ACCESSORY_SN  ("RE:2107")  //SERIAL_NUMBER
-#define ACCESSORY_MANUFACTURER ("Resonaura")
-#define ACCESSORY_MODEL  ("ResoLight")
+homekit_value_t onStateGet() { return HOMEKIT_BOOL(on); }
 
-#define PIN_LED  2//D4
+homekit_value_t temperatureStateGet() { return HOMEKIT_UINT32(temperature); }
 
-int led_bri = 100; //[0, 100]
-unsigned int led_temp = 154;
-float led_hue = 0; 
-float led_saturation = 0; 
-bool led_power = false; //true or flase
-bool in_color_mode = false;
+homekit_value_t hueStateGet() { return HOMEKIT_FLOAT(hue); }
 
-homekit_value_t led_on_get() {
-	return HOMEKIT_BOOL(led_power);
+homekit_value_t saturationStateGet() { return HOMEKIT_FLOAT(saturation); }
+
+homekit_value_t brightnessStateGet() { return HOMEKIT_INT(brightness); }
+
+void onStateSet(homekit_value_t value)
+{
+  if (value.format != homekit_format_bool)
+  {
+    printf("Invalid on-value format: %d\n", value.format);
+    return;
+  }
+  on = value.bool_value;
+  if (on)
+  {
+    if (brightness < 1)
+    {
+      brightness = 100;
+    }
+  }
+
+  setYeelightPower(on && !inColorMode,
+                   false);    // Вызываем функцию для Yeelight White
+  setYeelightPower(on, true); // Вызываем функцию для Yeelight Color
 }
 
-void led_on_set(homekit_value_t value) {
-	if (value.format != homekit_format_bool) {
-		printf("Invalid on-value format: %d\n", value.format);
-		return;
-	}
-	led_power = value.bool_value;
-	if (led_power) {
-		if (led_bri < 1) {
-			led_bri = 100;
-		}
-	}
+void temperatureStateSet(homekit_value_t value)
+{
+  if (value.format != homekit_format_uint32)
+  {
+    printf("Invalid temp-value format: %d\n", value.format);
+    return;
+  }
 
-  setYeelightPower(led_power && !in_color_mode, false); // Вызываем функцию для Yeelight White
-  setYeelightPower(led_power, true); // Вызываем функцию для Yeelight Color
-}
+  temperature = value.int_value;
+  int ct = 1000000 / temperature;
 
-homekit_value_t light_bri_get() {
-	return HOMEKIT_INT(led_bri);
-}
+  on = true;
+  inColorMode = false;
 
-homekit_value_t light_temp_get() {
-	return HOMEKIT_UINT32(led_temp);
-}
-
-homekit_value_t light_hue_get() {
-	return HOMEKIT_FLOAT(led_hue);
-}
-
-homekit_value_t light_saturation_get() {
-	return HOMEKIT_FLOAT(led_saturation);
-}
-
-void light_temp_set(homekit_value_t value) {
-	if (value.format != homekit_format_uint32) {
-		printf("Invalid temp-value format: %d\n", value.format);
-		return;
-	}
-
-  led_temp = value.int_value;
-  int ct = 1000000 / led_temp;
-
-  led_power = true;
-  in_color_mode = false;
-
-	setYeelightColorTemp(ct, false);
+  setYeelightColorTemp(ct, false);
   setYeelightColorTemp(ct, true);
 
   setYeelightPower(true, false);
   setYeelightPower(true, true);
 }
 
-void light_hue_set(homekit_value_t value) {
-	if (value.format != homekit_format_float) {
-		printf("Invalid hue-value format: %d\n", value.format);
-		return;
-	}
+void hueStateSet(homekit_value_t value)
+{
+  if (value.format != homekit_format_float)
+  {
+    printf("Invalid hue-value format: %d\n", value.format);
+    return;
+  }
 
-  led_power = true;
-  in_color_mode = true;
+  on = true;
+  inColorMode = true;
 
-  led_hue = value.float_value;
-	setYeelightHueAndSaturation((int)led_hue, (int)led_saturation);
-
-  setYeelightPower(false, false);
-  setYeelightPower(true, true);
-}
-
-void light_saturation_set(homekit_value_t value) {
-	if (value.format != homekit_format_float) {
-		printf("Invalid saturation-value format: %d\n", value.format);
-		return;
-	}
-
-  led_power = true;
-  in_color_mode = true;
-
-  led_saturation = value.float_value;
-	setYeelightHueAndSaturation((int)led_hue, (int)led_saturation);
+  hue = value.float_value;
+  setYeelightHueAndSaturation((int)hue, (int)saturation);
 
   setYeelightPower(false, false);
   setYeelightPower(true, true);
 }
 
+void saturationStateSet(homekit_value_t value)
+{
+  if (value.format != homekit_format_float)
+  {
+    printf("Invalid saturation-value format: %d\n", value.format);
+    return;
+  }
+
+  on = true;
+  inColorMode = true;
+
+  saturation = value.float_value;
+  setYeelightHueAndSaturation((int)hue, (int)saturation);
+
+  setYeelightPower(false, false);
+  setYeelightPower(true, true);
+}
+
+void brightnessStateSet(homekit_value_t value)
+{
+  if (value.format != homekit_format_int)
+  {
+    return;
+  }
+  brightness = value.int_value;
+
+  on = true;
+
+  setYeelightBrightness(inColorMode ? 0 : brightness,
+                        false); // Вызываем функцию для Yeelight White
+  setYeelightBrightness(brightness,
+                        true); // Вызываем функцию для Yeelight Color
+
+  setYeelightPower(!inColorMode && brightness > 0, false);
+  setYeelightPower(brightness > 0, true);
+}
 
 homekit_characteristic_t name = HOMEKIT_CHARACTERISTIC_(NAME, ACCESSORY_NAME);
-homekit_characteristic_t serial_number = HOMEKIT_CHARACTERISTIC_(SERIAL_NUMBER, ACCESSORY_SN);
-homekit_characteristic_t occupancy_detected = HOMEKIT_CHARACTERISTIC_(OCCUPANCY_DETECTED, 0);
-homekit_characteristic_t led_on = HOMEKIT_CHARACTERISTIC_(ON, false,
-		//.callback=HOMEKIT_CHARACTERISTIC_CALLBACK(switch_on_callback),
-		.getter=led_on_get,
-		.setter=led_on_set
-);
+homekit_characteristic_t serial_number =
+    HOMEKIT_CHARACTERISTIC_(SERIAL_NUMBER, ACCESSORY_SN);
+homekit_characteristic_t led_on = HOMEKIT_CHARACTERISTIC_(
+    ON, false,
+    //.callback=HOMEKIT_CHARACTERISTIC_CALLBACK(switch_on_callback),
+    .getter = onStateGet, .setter = onStateSet);
 
-void occupancy_toggle() {
-	const uint8_t state = occupancy_detected.value.uint8_value;
-	occupancy_detected.value = HOMEKIT_UINT8((!state) ? 1 : 0);
-	homekit_characteristic_notify(&occupancy_detected, occupancy_detected.value);
+void ledToggle()
+{
+  led_on.value.bool_value = !led_on.value.bool_value;
+  led_on.setter(led_on.value);
+  homekit_characteristic_notify(&led_on, led_on.value);
 }
 
-void led_bri_set(homekit_value_t value) {
-	if (value.format != homekit_format_int) {
-		return;
-	}
-	led_bri = value.int_value;
-
-  led_power = true;
-
-  setYeelightBrightness(in_color_mode ? 0 : led_bri, false); // Вызываем функцию для Yeelight White
-  setYeelightBrightness(led_bri, true); // Вызываем функцию для Yeelight Color
-
-  setYeelightPower(!in_color_mode && led_bri > 0, false);
-  setYeelightPower(led_bri > 0, true);
+void accessoryIdentify(homekit_value_t _value)
+{
+  printf("accessory identify\n");
 }
 
-void led_toggle() {
-	led_on.value.bool_value = !led_on.value.bool_value;
-	led_on.setter(led_on.value);
-	homekit_characteristic_notify(&led_on, led_on.value);
-}
-
-void accessory_identify(homekit_value_t _value) {
-	printf("accessory identify\n");
-}
-
-homekit_accessory_t *accessories[] =
-		{
-				HOMEKIT_ACCESSORY(
-						.id = 1,
-						.category = homekit_accessory_category_lightbulb,
-						.services=(homekit_service_t*[]){
-						HOMEKIT_SERVICE(ACCESSORY_INFORMATION,
-						.characteristics=(homekit_characteristic_t*[]){
-						&name,
-						HOMEKIT_CHARACTERISTIC(MANUFACTURER, ACCESSORY_MANUFACTURER),
-						&serial_number,
-						HOMEKIT_CHARACTERISTIC(MODEL, ACCESSORY_MODEL),
-						HOMEKIT_CHARACTERISTIC(FIRMWARE_REVISION, "0.0.9"),
-						HOMEKIT_CHARACTERISTIC(IDENTIFY, accessory_identify),
-						NULL
-						}),
-						HOMEKIT_SERVICE(LIGHTBULB, .primary=true,
-						.characteristics=(homekit_characteristic_t*[]){
-						HOMEKIT_CHARACTERISTIC(NAME, "Led"),
-						&led_on,
-						HOMEKIT_CHARACTERISTIC(BRIGHTNESS, 100, .getter=light_bri_get, .setter=led_bri_set),
-            HOMEKIT_CHARACTERISTIC(COLOR_TEMPERATURE, 153, .getter=light_temp_get, .setter=light_temp_set),
-            HOMEKIT_CHARACTERISTIC(HUE, 0, .getter=light_hue_get, .setter=light_hue_set),
-            HOMEKIT_CHARACTERISTIC(SATURATION, 0, .getter=light_saturation_get, .setter=light_saturation_set),
-						NULL
-						}),
-						NULL
-						}),
-				NULL
-		};
+homekit_accessory_t *accessories[] = {
+    HOMEKIT_ACCESSORY(
+            .id = 1, .category = homekit_accessory_category_lightbulb,
+            .services =
+                (homekit_service_t *[]){
+                    HOMEKIT_SERVICE(
+                        ACCESSORY_INFORMATION,
+                        .characteristics =
+                            (homekit_characteristic_t *[]){
+                                &name,
+                                HOMEKIT_CHARACTERISTIC(MANUFACTURER,
+                                                       ACCESSORY_MANUFACTURER),
+                                &serial_number,
+                                HOMEKIT_CHARACTERISTIC(MODEL, ACCESSORY_MODEL),
+                                HOMEKIT_CHARACTERISTIC(FIRMWARE_REVISION,
+                                                       "0.0.9"),
+                                HOMEKIT_CHARACTERISTIC(IDENTIFY,
+                                                       accessoryIdentify),
+                                NULL}),
+                    HOMEKIT_SERVICE(
+                        LIGHTBULB, .primary = true,
+                        .characteristics =
+                            (homekit_characteristic_t *[]){
+                                HOMEKIT_CHARACTERISTIC(NAME, "Led"), &led_on,
+                                HOMEKIT_CHARACTERISTIC(
+                                    BRIGHTNESS, 100,
+                                    .getter = brightnessStateGet,
+                                    .setter = brightnessStateSet),
+                                HOMEKIT_CHARACTERISTIC(
+                                    COLOR_TEMPERATURE,
+                                    153,
+                                    .getter = temperatureStateGet,
+                                    .setter = temperatureStateSet),
+                                HOMEKIT_CHARACTERISTIC(
+                                    HUE,
+                                    0, .getter = hueStateGet,
+                                    .setter = hueStateSet),
+                                HOMEKIT_CHARACTERISTIC(SATURATION, 0, .getter = saturationStateGet,
+                                                       .setter =
+                                                           saturationStateSet),
+                                NULL}),
+                    NULL}),
+    NULL};
 
 homekit_server_config_t config = {
-		.accessories = accessories,
-		.password = "666-66-666",
-		//.on_event = on_homekit_event,
-		.setupId = "RERE"
-};
+    .accessories = accessories, .password = "666-66-666", .setupId = "RERE"};
 
-void accessory_init() {
-	// pinMode(PIN_LED, OUTPUT);
+void accessoryInit()
+{
+  // I will add here something later... maybe... :)
 }
-
